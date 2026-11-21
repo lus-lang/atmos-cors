@@ -1,0 +1,67 @@
+local ROOT = string.match(TEST_DIR, "^(.*)[/\\][^/\\]*$")
+local PACKAGES = string.match(ROOT, "^(.*)[/\\][^/\\]*$")
+pledge("load", "fs:read=" .. PACKAGES .. "/*")
+package.path = ROOT .. "/?.lus;" .. PACKAGES .. "/web/?.lus;" .. PACKAGES .. "/atmos-web/?.lus;" .. package.path
+
+local cors = require("cors")
+local web = require("web")
+
+local function app_with(options)
+    local app = web.app()
+    app:register(cors, options)
+    app:get("/data", function(req) return { ok = true } end)
+    return app
+end
+
+local function wildcard_origin_test()
+    local app = app_with()
+    local res = app:inject({ path = "/data", headers = { Origin = "https://a.example" } })
+    assert(res.headers["access-control-allow-origin"] == "*")
+    assert(res.headers.vary == nil)
+end
+
+local function preflight_test()
+    local app = app_with({ origin = { "https://a.example" }, max_age = 600, credentials = true })
+    local res = app:inject({
+        method = "OPTIONS", path = "/data",
+        headers = {
+            Origin = "https://a.example",
+            ["Access-Control-Request-Method"] = "PUT",
+            ["Access-Control-Request-Headers"] = "x-token",
+        },
+    })
+    assert(res.status == 204)
+    assert(res.headers["access-control-allow-origin"] == "https://a.example")
+    assert(res.headers["access-control-allow-headers"] == "x-token")
+    assert(res.headers["access-control-max-age"] == "600")
+    assert(res.headers["access-control-allow-credentials"] == "true")
+    assert(res.headers.vary:find("Origin", 1, true))
+end
+
+local function rejected_origin_test()
+    local app = app_with({ origin = { "https://a.example" } })
+    local res = app:inject({ path = "/data", headers = { Origin = "https://evil.example" } })
+    assert(res.status == 200)
+    assert(res.headers["access-control-allow-origin"] == nil)
+    assert(res.headers.vary == "Origin")
+    res = app:inject({
+        method = "OPTIONS", path = "/data",
+        headers = { Origin = "https://evil.example", ["Access-Control-Request-Method"] = "GET" },
+    })
+    assert(res.headers["access-control-allow-origin"] == nil)
+end
+
+local function pattern_and_function_test()
+    local app = app_with({ origin = "^https://[%w-]+%.lus%.dev$", expose = { "X-Total" } })
+    local res = app:inject({ path = "/data", headers = { Origin = "https://docs.lus.dev" } })
+    assert(res.headers["access-control-allow-origin"] == "https://docs.lus.dev")
+    assert(res.headers["access-control-expose-headers"] == "X-Total")
+    app = app_with({ origin = function(o) return o:sub(-4) == ".dev" end })
+    assert(app:inject({ path = "/data", headers = { Origin = "https://x.dev" } }).headers["access-control-allow-origin"] == "https://x.dev")
+end
+
+local function credentials_need_origin_test()
+    local ok, err = catch app_with({ credentials = true })
+    assert(not ok)
+    assert(err:find("credentials need an explicit origin", 1, true))
+end
