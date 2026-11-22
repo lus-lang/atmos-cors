@@ -1,13 +1,13 @@
 --- Adds Cross-Origin Resource Sharing to `web` applications.
 ---
---- The plugin answers preflight `OPTIONS` requests with a route for
---- `OPTIONS /*` under the prefix of the scope, and adds the
---- `Access-Control-*` headers to the responses of the scope that registers
---- it. A request from an origin that the options do not allow gets no CORS
---- headers, so the browser blocks the response.
+--- The plugin adds a route for `OPTIONS /*` under the prefix of the scope
+--- that registers it, which answers preflight requests. It also adds the
+--- `Access-Control-*` headers to every response of that scope. A request
+--- from an origin that the options do not allow gets no CORS headers, so the
+--- browser blocks the response.
 ---
 --- @package cors
---- @version 0.1.0
+--- @version 1.0.0
 --- @lus 2.0
 --- @license 0BSD
 --- @repository https://github.com/lus-lang/atmos-cors
@@ -70,8 +70,8 @@ end
 --- - `credentials`: `true` to send `Access-Control-Allow-Credentials`.
 --- - `max_age`: how many seconds a browser may cache a preflight.
 ---
---- `credentials = true` with `origin = "*"` raises an error, because browsers
---- reject that combination.
+--- `credentials = true` with the origin `"*"` raises an error, because
+--- browsers reject that combination.
 --- @param scope table The `web` scope.
 --- @param options table? The options.
 function M.register(scope, options)
@@ -130,7 +130,8 @@ function M.register(scope, options)
     end)
 end
 
---- Registers into the scope that calls `register`.
+--- `true`, so `scope:register(cors)` applies the plugin to every route of
+--- `scope`.
 M.shared = true
 
 return M
