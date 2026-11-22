@@ -9,7 +9,7 @@ local web = require("web")
 local function app_with(options)
     local app = web.app()
     app:register(cors, options)
-    app:get("/data", function(req) return { ok = true } end)
+    app:get("/data", function(_req) return { ok = true } end)
     return app
 end
 
