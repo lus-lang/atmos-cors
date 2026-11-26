@@ -6,6 +6,17 @@
 --- from an origin that the options do not allow gets no CORS headers, so the
 --- browser blocks the response.
 ---
+--- The following application accepts cross-origin requests from
+--- `https://lus.dev` only.
+---
+--- ```lus nocheck
+--- local web = require("https://atmosp.here/2.0/web.lus")
+--- local cors = require("https://atmosp.here/2.0/cors.lus")
+---
+--- local app = web.app()
+--- app:register(cors, { origin = { "https://lus.dev" } })
+--- ```
+---
 --- @package cors
 --- @version 1.0.0
 --- @lus 2.0
@@ -18,9 +29,11 @@ local function join(value, default)
     if value == nil then
         return default
     end
+
     if type(value) == "table" then
         return table.concat(value, ", ")
     end
+
     return value
 end
 
@@ -28,31 +41,50 @@ end
 -- Access-Control-Allow-Origin, or nil when the origin is not allowed.
 local function origin_matcher(origin)
     if origin == nil or origin == "*" then
-        return function() return "*" end, false
+        return function()
+            return "*"
+        end, false
     end
+
     if origin == true then
-        return function(o) return o end, true
+        return function(o)
+            return o
+        end, true
     end
+
     if type(origin) == "function" then
         return function(o, req)
             local result = origin(o, req)
+
             if result == true then
                 return o
             end
+
             return result or nil
         end, true
     end
+
     if type(origin) == "string" then
         if origin:find("[%%%[%]%^%$%*%+%-%?%(%)%.]") and origin:sub(1, 1) == "^" then
-            return function(o) return o and o:find(origin) and o or nil end, true
+            return function(o)
+                return o?:find(origin) and o or nil
+            end, true
         end
-        return function(o) return o == origin and o or nil end, true
+
+        return function(o)
+            return o == origin and o or nil
+        end, true
     end
+
     local set = {}
+
     for _, o in ipairs(origin) do
         set[o] = true
     end
-    return function(o) return o and set[o] and o or nil end, true
+
+    return function(o)
+        return o and set[o] and o or nil
+    end, true
 end
 
 --- Registers the CORS plugin on a `web` scope.
@@ -77,9 +109,11 @@ end
 function M.register(scope, options)
     options = options or {}
     local match, varies = origin_matcher(options.origin)
+
     if options.credentials and not varies then
         error("cors: credentials need an explicit origin, not '*'", 2)
     end
+
     local methods = join(options.methods, "GET, HEAD, PUT, PATCH, POST, DELETE")
     local allowed_headers = join(options.headers, nil)
     local expose = join(options.expose, nil)
@@ -89,43 +123,50 @@ function M.register(scope, options)
     local function preflight(req)
         local headers = {}
         local allow = match(req.headers.origin, req)
+
         if allow and req.headers["access-control-request-method"] then
             headers["Access-Control-Allow-Origin"] = allow
             headers["Access-Control-Allow-Methods"] = methods
-            headers["Access-Control-Allow-Headers"] = allowed_headers or req.headers["access-control-request-headers"]
+            headers["Access-Control-Allow-Headers"] = allowed_headers
+                or req.headers["access-control-request-headers"]
             headers["Access-Control-Allow-Credentials"] = credentials
             headers["Access-Control-Max-Age"] = max_age
         end
+
         if varies then
             headers.Vary = allowed_headers and "Origin" or "Origin, Access-Control-Request-Headers"
         end
+
         return 204, "", headers
     end
+
     scope:options("/*", preflight)
 
     scope:hook("on_send", function(req, status, body, headers)
         local origin = req.headers.origin
+
         if origin == nil and varies == false then
             return status, body, headers
         end
+
         local allow = match(origin, req)
+
         if allow == nil and not varies then
             return status, body, headers
         end
-        local out = {}
-        if headers then
-            for k, v in pairs(headers) do
-                out[k] = v
-            end
-        end
+
+        local out = headers and table.clone(headers) or {}
+
         if allow then
             out["Access-Control-Allow-Origin"] = allow
             out["Access-Control-Allow-Credentials"] = credentials
             out["Access-Control-Expose-Headers"] = expose
         end
+
         if varies then
-            out.Vary = out.Vary and (out.Vary .. ", Origin") or "Origin"
+            out.Vary = out.Vary and `$(out.Vary), Origin` or "Origin"
         end
+
         return status, body, out
     end)
 end
